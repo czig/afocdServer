@@ -11,6 +11,7 @@ var bodyParser  = require('body-parser')
 var morgan      = require('morgan')
 const sqlite3   = require('sqlite3').verbose()
 var config      = require('./config') // get our config file
+var cors        = require('cors')
 var moment      = require('moment')
 
 
@@ -19,6 +20,23 @@ var moment      = require('moment')
 // =======================
 var port = process.env.PORT || 5005 // used to create, sign, and verify tokens
 let db = new sqlite3.Database(config.database)
+
+//CORS
+//Requests are only allowed from whitelisted url
+// var whitelist = ['http://localhost:8080','https://localhost:8080']
+var corsOptions = {
+    origin: function (origin, callback){
+        // whitelist-test pass
+        if (true){//(whitelist.indexOf(origin) !== -1){
+            callback(null, true)
+        }
+        // whitelist-test fail
+        else{
+            callback(new Error('Not on whitelist'))    
+        }
+    }
+}
+app.use(cors(corsOptions))
 
 // use body parser so we can get info from POST and/or URL parameters
 app.use(bodyParser.urlencoded({ extended: false }))
@@ -56,12 +74,9 @@ apiRoutes.get('/getCips', (req, res)=>{
             })
         }
         else{
-            rows.forEach((row)=>{
-                degrees.push(row)
-            })
             res.json({
                 success: true,
-                data: degrees 
+                data: rows 
             })
         }
     })
@@ -79,7 +94,25 @@ apiRoutes.get('/getDegreeQuals',(req,res) => {
                     on qual.cip_code = cip.cip_code
                 where afsc=(?)`
     db.all(sql1, afsc, (err, rows) => {
-        console.log(rows)
+        if (err) {
+            throw err
+        } else if (!rows) {
+            res.json({
+                success: false,
+                message: 'No Data'
+            })
+        } else {
+            res.json({
+                success: true,
+                data: rows 
+            })
+        }
+    })
+})
+
+apiRoutes.get('/getAfscs',(req,res) => {
+    let sql1 = 'select distinct afsc from degreeRows'
+    db.all(sql1, (err, rows) => {
         if (err) {
             throw err
         } else if (!rows) {
@@ -101,7 +134,6 @@ apiRoutes.get('/getDegreeSummary',(req,res) => {
     let sql1 = `select cip, avgNumPerYear, avgPercentile 
                 from degreeSummary where cip=(?)`
     db.all(sql1, afsc, (err, rows) => {
-        console.log(rows)
         if (err) {
             throw err
         } else if (!rows) {
