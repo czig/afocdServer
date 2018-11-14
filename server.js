@@ -62,7 +62,7 @@ apiRoutes.get('/', (req, res)=>{
 })
 
 apiRoutes.get('/getCips', (req, res)=>{
-    let sql1 = 'SELECT * from cip' 
+    let sql1 = 'SELECT * from cip order by CIP_code' 
     db.all(sql1, (err, rows) =>{
         if(err){
             throw err
@@ -92,7 +92,71 @@ apiRoutes.get('/getDegreeQuals',(req,res) => {
                 from degreeRows as qual
                 left join cip as cip
                     on qual.cip_code = cip.cip_code
-                where afsc=(?)`
+                where afsc=(?)
+                order by qual.cip_code`
+    db.all(sql1, afsc, (err, rows) => {
+        if (err) {
+            throw err
+        } else if (!rows) {
+            res.json({
+                success: false,
+                message: 'No Data'
+            })
+        } else {
+            res.json({
+                success: true,
+                data: rows 
+            })
+        }
+    })
+})
+
+apiRoutes.get('/getCipTypes',(req,res) => {
+    let sql1 = `select substr(cip.cip_code,1,2)||".XXXX" as degreeType,
+                        count(*) as total
+                from cip as cip
+                group by degreeType
+                order by degreeType`
+    db.all(sql1, [], (err, rows) => {
+        if (err) {
+            throw err
+        } else if (!rows) {
+            res.json({
+                success: false,
+                message: 'No Data'
+            })
+        } else {
+            res.json({
+                success: true,
+                data: rows 
+            })
+        }
+    })
+})
+
+apiRoutes.get('/getAllTypes',(req,res) => {
+    var afsc = req.query.afsc
+    let sql1 = `select qual.degreeType||".XXXX" as degreeType,
+                        qual.numChosen,
+                        cip.total
+                from (
+                        select substr(cip_code,1,2) as degreeType,
+                                count(*) as numChosen
+                        from degreeRows
+                        where afsc=(?)
+                        group by degreeType
+                        order by degreeType
+                     ) as qual 
+                left join (
+                            select substr(cip_code,1,2) as degreeType,
+                                    count(*) as total
+                            from cip
+                            group by degreeType
+                            order by degreeType
+                          ) as cip
+                    on qual.degreeType = cip.degreeType
+                group by qual.degreeType
+                order by qual.degreeType`
     db.all(sql1, afsc, (err, rows) => {
         if (err) {
             throw err
