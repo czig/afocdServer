@@ -223,6 +223,28 @@ apiRoutes.get('/getDegreeSummary',(req,res) => {
     })
 })
 
+apiRoutes.get('/spoofGet',(req,res) => {
+    let sql1 = `
+                    select current_timestamp as date;
+                `
+    var data = []
+    db.serialize(function() {
+        db.all(sql1, [], (err, rows) => {
+            console.log(rows[0])
+            data.push(rows[0])
+        })
+        db.all(sql1, [], (err, rows) => {
+            console.log(rows[0])
+            data.push(rows[0])
+            console.log(data)
+            res.json({
+                success: true,
+                data: data 
+            })
+        })
+    })
+})
+
 apiRoutes.post('/spoofPost',(req,res) => {
     console.log(req)
     if (req) {
@@ -249,12 +271,87 @@ apiRoutes.post('/submitDegreeQuals',(req,res) => {
     var rowValues = []
     //make one dimensional array for query and data elements
     for (let i = 0; i < degrees.length; i++) {
+        var j = Math.trunc(i / 100);
+        if (i % 100 === 0) {
+            rowValues[j] = []
+            data[j] = []
+        }
+        rowValues[j].push(queryValues)
+        data[j].push(afsc)
+        data[j].push(degrees[i].tier)
+        data[j].push(degrees[i].CIP_Code)
+        data[j].push(person)
+        data[j].push(degrees[i].tierOrder)
+    }
+    //make large insert string
+    var sqlPosts = []
+    rowValues.forEach((d,i) => {
+        sqlPosts[i] = sqlPost + d.join(", "); 
+    })
+    var result = []
+    //perform inserts in serial (only applies to methods in 'db' class)
+    db.serialize(function() {
+        var promises = []
+        //begin transaction to keep current_timestamp same for all inserts
+        db.run('begin transaction');
+        data.forEach((d,i) => {
+            //wrap database call in promise so we can determine success once
+            //all calls have completed
+            promises.push(new Promise((res,rej) => {
+                db.run(sqlPosts[i], d, function(err) {
+                    if (err) {
+                        throw err
+                        //resolve promise with value false
+                        res(false)
+                    } else {
+                        //resolve promise with value true
+                        res(true)
+                    }
+                })
+            })
+            )
+        })
+        //run commit to finish transaction
+        db.run('commit');
+        //once all promises have been resolved, determine success
+        Promise.all(promises).then((payload) => {
+            if (payload.every(d => d)) {
+                res.status(200).send({
+                    success: true,
+                    message: 'Data successfully submitted!'
+                })
+            } else {
+                res.status(400).send({
+                    success: fase,
+                    message: 'Error attempting to submit data.'
+                })
+            }
+        })
+    })
+})
+
+apiRoutes.post('/submitTargetRates',(req,res) => {
+    console.log(req)
+    //pull values from request
+    var afsc = req.body.afsc
+    var targetRates = req.body.targetRates
+    var person = req.body.person
+    //set up sql insert
+    let sqlPost = `INSERT INTO targetRates 
+                    (afsc,tier,criteria,percent,submitDate,submittedBy)
+                    values `
+    //make string for each insert
+    let queryValues = "((?), (?), (?), (?), CURRENT_TIMESTAMP, (?))"
+    var data = []
+    var rowValues = []
+    //make one dimensional array for query and data elements
+    for (let i = 0; i < targetRates.length; i++) {
         rowValues.push(queryValues)
         data.push(afsc)
-        data.push(degrees[i].tier)
-        data.push(degrees[i].CIP_Code)
+        data.push(targetRates[i].tier)
+        data.push(targetRates[i].criteria)
+        data.push(targetRates[i].percent)
         data.push(person)
-        data.push(degrees[i].tierOrder)
     }
     //make large insert string
     sqlPost += rowValues.join(", ");
@@ -271,90 +368,6 @@ apiRoutes.post('/submitDegreeQuals',(req,res) => {
     })
 })
 
-
-
-//API endpoint for officer post requests (submitting ranked billets)
-apiRoutes.post('/officers', (req, res)=>{
-    var officerId = req.decoded.id
-    var comment = req.body.comment
-    var departureDate = req.body.desiredDepartureDate
-    var desiredRNLTD = req.body.desiredRNLTD
-    var interests = JSON.stringify(req.body.interests)
-    var qualifications = JSON.stringify(req.body.qualifications)
-    console.log(req.body)
-    var sqlPost = `UPDATE officers set comment = (?), 
-                                   departureDate = (?), 
-                                   desiredRNLTD = (?), 
-                                   interests = (?), 
-                                   qualifications = (?) 
-                                       where rowid = (?)`
-    db.run(sqlPost, [comment, departureDate, desiredRNLTD, interests, qualifications, officerId], function(err){
-        //If error
-        if (err){
-            throw err
-        }
-        //If success 
-        else {
-            //changes property used for confirming update or delete statements
-            console.log("Rows changed: " + this.changes)
-            res.status(200).send({
-                success: true,
-                message: 'Successfully submitted.'
-            })
-        }
-    })
-})
-
-//API endpoint for officers getting ranked billets
-apiRoutes.get('/billets_fave', (req,res)=>{
-    var officerId = req.decoded.id
-    console.log(req.decoded)
-    var sqlGet = 'Select rankBillets from officers where rowid = (?)'
-    db.get(sqlGet, [officerId], (err,row)=>{
-        if (err){
-            throw err
-        }
-        else {
-            console.log(row)
-            res.json({
-                success: true,
-                data: row
-            })
-        }
-    })
-    
-})
-
-//API endpoint for officers submitting ranked billets
-apiRoutes.post('/billets_fave', (req, res)=>{
-    var officerId = req.decoded.id
-    var rankedBillets = req.body.rankedBillets
-    var sqlPost = 'UPDATE officers set rankBillets = (?) where rowid = (?)' 
-    db.run(sqlPost, [rankedBillets, officerId], (err)=>{
-        //If error
-        if (err){
-            throw err
-        }
-        //If success 
-        else {
-            //changes property used for confirming update or delete statements
-            console.log("Rows changed: " + this.changes)
-            res.status(200).send({
-                success: true,
-                message: 'Successfully submitted.'
-            })
-        }
-    })
-})
-
-
-//API endpoint for my billets page
-apiRoutes.get('/billets/:billetId', (req, res)=>{
-    res.json({
-        success: true,
-        billetId: req.params.billetId
-    })
-})
 
 app.use('/api', apiRoutes)
 
