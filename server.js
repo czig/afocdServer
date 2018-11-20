@@ -82,6 +82,26 @@ apiRoutes.get('/getCips', (req, res)=>{
     })
 })
 
+apiRoutes.get('/getLastUpdateDate',(req,res) => {
+    var afsc = req.query.afsc
+    let sql1 = `select max(submitDate) as lastUpdate from degreeRows where afsc=(?)` 
+    db.get(sql1, afsc, (err,row) => {
+        if (err) {
+            throw err
+        } else if (!row) {
+            res.json({
+                success: false,
+                message: 'No previous update.'
+            })
+        } else {
+            res.json({
+                success: true,
+                data: row
+            })
+        }
+    })
+})
+
 apiRoutes.get('/getDegreeQuals',(req,res) => {
     var afsc = req.query.afsc
     let sql1 = `select qual.afsc, 
@@ -92,9 +112,38 @@ apiRoutes.get('/getDegreeQuals',(req,res) => {
                 from degreeRows as qual
                 left join cip as cip
                     on qual.cip_code = cip.cip_code
-                where afsc=(?)
+                where afsc=(?) 
+                    and qual.submitDate = (select max(submitDate) from degreeRows
+                                            where afsc=(?))
                 order by qual.cip_code`
-    db.all(sql1, afsc, (err, rows) => {
+    db.all(sql1, [afsc,afsc], (err, rows) => {
+        if (err) {
+            throw err
+        } else if (!rows) {
+            res.json({
+                success: false,
+                message: 'No Data'
+            })
+        } else {
+            res.json({
+                success: true,
+                data: rows 
+            })
+        }
+    })
+})
+
+apiRoutes.get('/getTargetRates',(req,res) => {
+    var afsc = req.query.afsc
+    let sql1 = `select tier, 
+                        trim(criteria) as criteria,
+                        percent
+                from targetRates 
+                where afsc=(?) 
+                    and submitDate = (select max(submitDate) from targetRates 
+                                            where afsc=(?))
+                `
+    db.all(sql1, [afsc,afsc], (err, rows) => {
         if (err) {
             throw err
         } else if (!rows) {
@@ -118,46 +167,6 @@ apiRoutes.get('/getCipTypes',(req,res) => {
                 group by degreeType
                 order by degreeType`
     db.all(sql1, [], (err, rows) => {
-        if (err) {
-            throw err
-        } else if (!rows) {
-            res.json({
-                success: false,
-                message: 'No Data'
-            })
-        } else {
-            res.json({
-                success: true,
-                data: rows 
-            })
-        }
-    })
-})
-
-apiRoutes.get('/getAllTypes',(req,res) => {
-    var afsc = req.query.afsc
-    let sql1 = `select qual.degreeType||".XXXX" as degreeType,
-                        qual.numChosen,
-                        cip.total
-                from (
-                        select substr(cip_code,1,2) as degreeType,
-                                count(*) as numChosen
-                        from degreeRows
-                        where afsc=(?)
-                        group by degreeType
-                        order by degreeType
-                     ) as qual 
-                left join (
-                            select substr(cip_code,1,2) as degreeType,
-                                    count(*) as total
-                            from cip
-                            group by degreeType
-                            order by degreeType
-                          ) as cip
-                    on qual.degreeType = cip.degreeType
-                group by qual.degreeType
-                order by qual.degreeType`
-    db.all(sql1, afsc, (err, rows) => {
         if (err) {
             throw err
         } else if (!rows) {
@@ -209,6 +218,54 @@ apiRoutes.get('/getDegreeSummary',(req,res) => {
             res.json({
                 success: true,
                 data: rows 
+            })
+        }
+    })
+})
+
+apiRoutes.post('/spoofPost',(req,res) => {
+    console.log(req)
+    if (req) {
+        res.status(200).send({
+            success: true,
+            message: 'Received'
+        })
+    }
+})
+
+apiRoutes.post('/submitDegreeQuals',(req,res) => {
+    console.log(req)
+    //pull values from request
+    var afsc = req.body.afsc
+    var degrees = req.body.degrees
+    var person = req.body.person
+    //set up sql insert
+    let sqlPost = `INSERT INTO degreeRows 
+                    (afsc,tier,CIP_Code,submitDate,submittedBy,tierOrder)
+                    values `
+    //make string for each insert
+    let queryValues = "((?), (?), (?), CURRENT_TIMESTAMP, (?), (?))"
+    var data = []
+    var rowValues = []
+    //make one dimensional array for query and data elements
+    for (let i = 0; i < degrees.length; i++) {
+        rowValues.push(queryValues)
+        data.push(afsc)
+        data.push(degrees[i].tier)
+        data.push(degrees[i].CIP_Code)
+        data.push(person)
+        data.push(degrees[i].tierOrder)
+    }
+    //make large insert string
+    sqlPost += rowValues.join(", ");
+
+    db.run(sqlPost, data, function(err) {
+        if (err) {
+            throw err
+        } else {
+            res.status(200).send({
+                success: true,
+                message: 'Data successfully submitted!'
             })
         }
     })
