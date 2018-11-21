@@ -13,6 +13,7 @@ const sqlite3   = require('sqlite3').verbose()
 var config      = require('./config') // get our config file
 var cors        = require('cors')
 var moment      = require('moment')
+var formidableMiddleware = require('express-formidable')
 
 
 // =======================
@@ -39,8 +40,9 @@ var corsOptions = {
 app.use(cors(corsOptions))
 
 // use body parser so we can get info from POST and/or URL parameters
-app.use(bodyParser.urlencoded({ extended: false }))
 app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({ extended: true}))
+// parse multipart/form-data posts
 
 // use morgan to log requests to the console
 app.use(morgan('dev'))
@@ -255,12 +257,13 @@ apiRoutes.post('/spoofPost',(req,res) => {
     }
 })
 
-apiRoutes.post('/submitDegreeQuals',(req,res) => {
-    console.log(req)
+apiRoutes.post('/submitDegreeQuals',formidableMiddleware(), (req,res) => {
+    //console.log(req)
     //pull values from request
-    var afsc = req.body.afsc
-    var degrees = req.body.degrees
-    var person = req.body.person
+    console.log(req.fields)
+    var afsc = req.fields.afsc
+    var degrees = JSON.parse(req.fields.degrees)
+    var person = req.fields.person
     //set up sql insert
     let sqlPost = `INSERT INTO degreeRows 
                     (afsc,tier,CIP_Code,submitDate,submittedBy,tierOrder)
@@ -330,12 +333,12 @@ apiRoutes.post('/submitDegreeQuals',(req,res) => {
     })
 })
 
-apiRoutes.post('/submitTargetRates',(req,res) => {
-    console.log(req)
+apiRoutes.post('/submitTargetRates', formidableMiddleware(), (req,res) => {
+    console.log('beginbegin')
     //pull values from request
-    var afsc = req.body.afsc
-    var targetRates = req.body.targetRates
-    var person = req.body.person
+    var afsc = req.fields.afsc
+    var targetRates = JSON.parse(req.fields.targetRates)
+    var person = req.fields.person
     //set up sql insert
     let sqlPost = `INSERT INTO targetRates 
                     (afsc,tier,criteria,percent,submitDate,submittedBy)
