@@ -62,6 +62,11 @@ var apiRoutes = express.Router()
 apiRoutes.get('/', (req, res)=>{
     res.json({message: 'Welcome to the API ROOT'})
 })
+apiRoutes.get('/login', (req, res)=>{
+    setTimeout(() => {
+        res.json({message: 'login'})
+    },1000)
+})
 
 apiRoutes.get('/getCips', (req, res)=>{
     let sql1 = 'SELECT * from cip order by CIP_code' 
@@ -260,10 +265,16 @@ apiRoutes.post('/spoofPost',(req,res) => {
 apiRoutes.post('/submitDegreeQuals',formidableMiddleware(), (req,res) => {
     //console.log(req)
     //pull values from request
-    console.log(req.fields)
     var afsc = req.fields.afsc
-    var degrees = JSON.parse(req.fields.degrees)
     var person = req.fields.person
+    var degreeRegex = /degrees[1-9].*/
+    var degreeKeys = Object.keys(req.fields).filter((d) => {
+        return degreeRegex.test(d);
+    })
+    var degrees = []
+    degreeKeys.forEach((d) => {
+        degrees = degrees.concat(JSON.parse(req.fields[d]))
+    })
     //set up sql insert
     let sqlPost = `INSERT INTO degreeRows 
                     (afsc,tier,CIP_Code,submitDate,submittedBy,tierOrder)
